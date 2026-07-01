@@ -12,6 +12,31 @@
           "battery_capacity_kwh": "Akku-Kapazität (kWh)",
           "min_soc": "Mindest-SOC (%)"
         }
+      },
+      "device_intro": {
+        "title": "Erstes Gerät hinzufügen?",
+        "menu_options": {
+          "add_device": "Gerät jetzt hinzufügen",
+          "finish_setup": "Später hinzufügen (Setup abschließen)"
+        }
+      },
+      "add_device": {
+        "title": "Neues Gerät hinzufügen",
+        "description": "Aktuell {count} Gerät(e) konfiguriert. Neues Gerät wird mit nächster Priorität hinzugefügt.",
+        "data": {
+          "name": "Name",
+          "switch_entity": "Switch-Entität",
+          "power_sensor": "Leistungssensor (optional, für automatische Messung)",
+          "avg_power_kw": "Geschätzte Leistung (kW) — wird durch Messung ersetzt sobald genug Daten vorliegen",
+          "is_wallbox": "Ist Wallbox (wird nicht geschaltet, Leistung wird von Last abgezogen)"
+        }
+      },
+      "add_another": {
+        "title": "Weiteres Gerät?",
+        "menu_options": {
+          "add_device": "Weiteres Gerät hinzufügen",
+          "finish_setup": "Fertig"
+        }
       }
     }
   },
@@ -21,6 +46,7 @@
         "title": "PV Surplus Manager",
         "menu_options": {
           "add_device": "Gerät hinzufügen",
+          "remove_device": "Gerät entfernen",
           "global_settings": "Systemeinstellungen",
           "finish": "Fertig"
         }
