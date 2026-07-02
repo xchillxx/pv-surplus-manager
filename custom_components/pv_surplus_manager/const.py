@@ -28,6 +28,10 @@ BATT_OK_BUFFER_H = 0.5        # h: extra buffer over h_to_solar
 STABLE_ON_CYCLES = 4   # 4 × 30s = 2 min before turning ON
 STABLE_OFF_CYCLES = 6  # 6 × 30s = 3 min before turning OFF
 
+# h_battery = avail_kwh / discharge_rate amplifies small discharge-rate noise
+# into large hour swings (division). Smooth over this many cycles (30s each).
+DISCHARGE_SMOOTHING_SAMPLES = 5  # 5 × 30s = 2.5 min rolling average
+
 UPDATE_INTERVAL_SECONDS = 30
 
 # Default monthly solar offsets (hours after sunrise until PV is useful)

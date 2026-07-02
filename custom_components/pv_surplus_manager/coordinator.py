@@ -9,6 +9,7 @@ samples exist, the configured estimate.
 from __future__ import annotations
 
 import logging
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
@@ -34,6 +35,7 @@ from .const import (
     CONF_SOLAR_OFFSETS,
     CONF_SOLAR_SENSOR,
     DEFAULT_SOLAR_OFFSETS,
+    DISCHARGE_SMOOTHING_SAMPLES,
     DOMAIN,
     MIN_SAMPLES_FOR_MEASURED_AVG,
     STABLE_OFF_CYCLES,
@@ -98,6 +100,7 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._entry_id = entry_id
         self._device_trackers: dict[str, DeviceState] = {}
         self._power_trackers: dict[str, DevicePowerTracker] = {}
+        self._discharge_samples: deque[float] = deque(maxlen=DISCHARGE_SMOOTHING_SAMPLES)
         for dev in config.get(CONF_DEVICES, []):
             switch_id = dev[CONF_DEVICE_SWITCH]
             self._device_trackers[switch_id] = DeviceState(device_id=switch_id)
@@ -200,8 +203,13 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         min_soc = self._config.get(CONF_MIN_SOC, 20.0)
 
         discharge = max(-batt, 0.0)
+        self._discharge_samples.append(discharge)
+        # h_battery is a division by discharge rate, which amplifies normal
+        # sensor noise into large hour swings near the threshold. Smooth over
+        # the last few cycles so a single noisy reading can't flip batt_ok.
+        smoothed_discharge = sum(self._discharge_samples) / len(self._discharge_samples)
         avail_kwh = max((soc - min_soc) / 100.0 * battery_kwh, 0.0)
-        h_battery = avail_kwh / discharge if discharge > 0.05 else 999.0
+        h_battery = avail_kwh / smoothed_discharge if smoothed_discharge > 0.05 else 999.0
 
         solar_start = self._get_solar_start()
         now = dt_util.utcnow()
