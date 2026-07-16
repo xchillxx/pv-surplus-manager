@@ -27,19 +27,33 @@ from .const import (
 )
 
 
+def _default(d: dict, key: str) -> dict:
+    """Only apply a `default=` kwarg when a real value exists.
+
+    voluptuous validates a marker's default value like any other field
+    value. Passing default=None for an unset entity/str field makes an
+    *optional, empty* field fail validation (e.g. "Entity None is neither
+    a valid entity ID nor a valid UUID") even though the user never
+    touched it. Omitting the kwarg entirely leaves the field genuinely
+    empty/unvalidated until the user provides a value.
+    """
+    value = d.get(key)
+    return {"default": value} if value is not None else {}
+
+
 def _global_settings_schema(defaults: dict | None = None) -> vol.Schema:
     d = defaults or {}
     return vol.Schema({
-        vol.Required(CONF_SOLAR_SENSOR, default=d.get(CONF_SOLAR_SENSOR)): selector.EntitySelector(
+        vol.Required(CONF_SOLAR_SENSOR, **_default(d, CONF_SOLAR_SENSOR)): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="sensor")
         ),
-        vol.Required(CONF_LOAD_SENSOR, default=d.get(CONF_LOAD_SENSOR)): selector.EntitySelector(
+        vol.Required(CONF_LOAD_SENSOR, **_default(d, CONF_LOAD_SENSOR)): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="sensor")
         ),
-        vol.Required(CONF_SOC_SENSOR, default=d.get(CONF_SOC_SENSOR)): selector.EntitySelector(
+        vol.Required(CONF_SOC_SENSOR, **_default(d, CONF_SOC_SENSOR)): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="sensor", device_class="battery")
         ),
-        vol.Required(CONF_BATT_SENSOR, default=d.get(CONF_BATT_SENSOR)): selector.EntitySelector(
+        vol.Required(CONF_BATT_SENSOR, **_default(d, CONF_BATT_SENSOR)): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="sensor")
         ),
         vol.Required(CONF_BATTERY_CAPACITY_KWH, default=d.get(CONF_BATTERY_CAPACITY_KWH, 13.8)): selector.NumberSelector(
@@ -55,14 +69,14 @@ def _normal_device_schema(defaults: dict | None = None, next_priority: int = 1) 
     """Schema for a switchable device — always has a switch entity."""
     d = defaults or {}
     return vol.Schema({
-        vol.Required(CONF_DEVICE_NAME, default=d.get(CONF_DEVICE_NAME)): str,
-        vol.Required(CONF_DEVICE_SWITCH, default=d.get(CONF_DEVICE_SWITCH)): selector.EntitySelector(
+        vol.Required(CONF_DEVICE_NAME, **_default(d, CONF_DEVICE_NAME)): str,
+        vol.Required(CONF_DEVICE_SWITCH, **_default(d, CONF_DEVICE_SWITCH)): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="switch")
         ),
         vol.Required(CONF_DEVICE_PRIORITY, default=d.get(CONF_DEVICE_PRIORITY, next_priority)): selector.NumberSelector(
             selector.NumberSelectorConfig(min=1, max=99, step=1)
         ),
-        vol.Optional(CONF_DEVICE_POWER_SENSOR, default=d.get(CONF_DEVICE_POWER_SENSOR)): selector.EntitySelector(
+        vol.Optional(CONF_DEVICE_POWER_SENSOR, **_default(d, CONF_DEVICE_POWER_SENSOR)): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="sensor", device_class="power")
         ),
         vol.Required(CONF_DEVICE_POWER_KW, default=d.get(CONF_DEVICE_POWER_KW, 0.15)): selector.NumberSelector(
@@ -77,7 +91,7 @@ def _wallbox_schema(defaults: dict | None = None) -> vol.Schema:
     d = defaults or {}
     return vol.Schema({
         vol.Required(CONF_DEVICE_NAME, default=d.get(CONF_DEVICE_NAME, "Wallbox")): str,
-        vol.Required(CONF_DEVICE_POWER_SENSOR, default=d.get(CONF_DEVICE_POWER_SENSOR)): selector.EntitySelector(
+        vol.Required(CONF_DEVICE_POWER_SENSOR, **_default(d, CONF_DEVICE_POWER_SENSOR)): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="sensor", device_class="power")
         ),
     })
