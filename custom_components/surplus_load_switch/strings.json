@@ -29,7 +29,8 @@
           "switch_entity": "Switch entity",
           "priority": "Priority (1 = highest)",
           "power_sensor": "Power sensor (optional, enables automatic measurement)",
-          "avg_power_kw": "Estimated power (kW) — replaced by measurement once enough data exists"
+          "avg_power_kw": "Estimated power (kW) — replaced by measurement once enough data exists",
+          "off_only": "Off only — never turn on (e.g. for a device on its own external time schedule; we'll still turn it off if there's no surplus for it)"
         }
       },
       "add_wallbox": {
@@ -71,7 +72,8 @@
           "switch_entity": "Switch entity",
           "priority": "Priority (1 = highest)",
           "power_sensor": "Power sensor (optional, enables automatic measurement)",
-          "avg_power_kw": "Estimated power (kW) — replaced by measurement once enough data exists"
+          "avg_power_kw": "Estimated power (kW) — replaced by measurement once enough data exists",
+          "off_only": "Off only — never turn on (e.g. for a device on its own external time schedule; we'll still turn it off if there's no surplus for it)"
         }
       },
       "add_wallbox": {
@@ -91,7 +93,8 @@
           "switch_entity": "Switch entity",
           "priority": "Priority (1 = highest)",
           "power_sensor": "Power sensor",
-          "avg_power_kw": "Estimated power (kW) — replaced by measurement once enough data exists"
+          "avg_power_kw": "Estimated power (kW) — replaced by measurement once enough data exists",
+          "off_only": "Off only — never turn on (e.g. for a device on its own external time schedule; we'll still turn it off if there's no surplus for it)"
         }
       },
       "remove_device": {

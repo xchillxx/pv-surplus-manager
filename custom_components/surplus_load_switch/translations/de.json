@@ -29,7 +29,8 @@
           "switch_entity": "Switch-Entität",
           "priority": "Priorität (1 = höchste)",
           "power_sensor": "Leistungssensor (optional, für automatische Messung)",
-          "avg_power_kw": "Geschätzte Leistung (kW) — wird durch Messung ersetzt sobald genug Daten vorliegen"
+          "avg_power_kw": "Geschätzte Leistung (kW) — wird durch Messung ersetzt sobald genug Daten vorliegen",
+          "off_only": "Nur ausschalten — nie selbst einschalten (z.B. bei externer Zeitschaltuhr; wir schalten trotzdem ab, wenn kein Überschuss dafür da ist)"
         }
       },
       "add_wallbox": {
@@ -71,7 +72,8 @@
           "switch_entity": "Switch-Entität",
           "priority": "Priorität (1 = höchste)",
           "power_sensor": "Leistungssensor (optional, für automatische Messung)",
-          "avg_power_kw": "Geschätzte Leistung (kW) — wird durch Messung ersetzt sobald genug Daten vorliegen"
+          "avg_power_kw": "Geschätzte Leistung (kW) — wird durch Messung ersetzt sobald genug Daten vorliegen",
+          "off_only": "Nur ausschalten — nie selbst einschalten (z.B. bei externer Zeitschaltuhr; wir schalten trotzdem ab, wenn kein Überschuss dafür da ist)"
         }
       },
       "add_wallbox": {
@@ -91,7 +93,8 @@
           "switch_entity": "Switch-Entität",
           "priority": "Priorität (1 = höchste)",
           "power_sensor": "Leistungssensor",
-          "avg_power_kw": "Geschätzte Leistung (kW) — wird durch Messung ersetzt sobald genug Daten vorliegen"
+          "avg_power_kw": "Geschätzte Leistung (kW) — wird durch Messung ersetzt sobald genug Daten vorliegen",
+          "off_only": "Nur ausschalten — nie selbst einschalten (z.B. bei externer Zeitschaltuhr; wir schalten trotzdem ab, wenn kein Überschuss dafür da ist)"
         }
       },
       "remove_device": {

@@ -36,6 +36,10 @@ cloud passes over or another appliance briefly kicks in.
   are added as a separate device type: never switched, only their power is
   subtracted from the household load so they don't distort the surplus
   calculation for other devices.
+- **Off-only devices** — for a device already controlled by its own external
+  time schedule (e.g. a pool pump), tick "Off only" and this integration will
+  never turn it on itself, but will still turn it off when there's no surplus
+  to cover it while the schedule has it running.
 - Fully configurable through the Home Assistant UI (no YAML required).
 
 ## Requirements

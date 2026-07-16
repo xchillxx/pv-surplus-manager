@@ -26,6 +26,7 @@ from .const import (
     CONF_DEVICES,
     CONF_DEVICE_IS_WALLBOX,
     CONF_DEVICE_NAME,
+    CONF_DEVICE_OFF_ONLY,
     CONF_DEVICE_POWER_KW,
     CONF_DEVICE_POWER_SENSOR,
     CONF_DEVICE_PRIORITY,
@@ -68,6 +69,7 @@ class DeviceDiagnostics:
     sample_count: int = 0
     is_measured: bool = False
     is_on: bool = False
+    off_only: bool = False
 
 
 @dataclass
@@ -305,6 +307,8 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
             predicted_power, diag = self._predicted_power_kw(dev)
             diag.is_on = is_on
+            off_only = dev.get(CONF_DEVICE_OFF_ONLY, False)
+            diag.off_only = off_only
             device_diagnostics[device_id] = diag
 
             if not switch_id:
@@ -313,14 +317,24 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 continue
 
             remaining_surplus = available_surplus - cumulative_committed
-            should_on = (remaining_surplus > predicted_power + SURPLUS_ON_THRESHOLD) or data.batt_ok
+            # off_only devices (e.g. a pool pump on its own time schedule)
+            # are only ever switched off by us, never on — an external
+            # schedule decides when it may run, we just protect it from
+            # running on grid power when there's no surplus for it.
+            should_on = (not off_only) and (
+                (remaining_surplus > predicted_power + SURPLUS_ON_THRESHOLD) or data.batt_ok
+            )
             should_off = (
                 remaining_surplus < predicted_power + SURPLUS_OFF_THRESHOLD
             ) and not data.batt_ok
 
             if should_on:
                 # Reserve this device's predicted share so lower-priority
-                # devices only see what's genuinely left over.
+                # devices only see what's genuinely left over. off_only
+                # devices never reach here (should_on is always False), so
+                # they never claim a reservation for power we won't turn on
+                # — their actual draw (if the schedule has them running) is
+                # already accounted for via managed_power_kw/base_load above.
                 cumulative_committed += predicted_power
 
             tracker = self._device_trackers.setdefault(
