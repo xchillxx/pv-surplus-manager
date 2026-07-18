@@ -8,7 +8,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_DEVICES, CONF_DEVICE_IS_WALLBOX, CONF_DEVICE_NAME, CONF_DEVICE_PRIORITY, DOMAIN
+from .const import (
+    CONF_DEVICES,
+    CONF_DEVICE_IS_WALLBOX,
+    CONF_DEVICE_NAME,
+    CONF_DEVICE_PRIORITY,
+    DOMAIN,
+    UPDATE_INTERVAL_SECONDS,
+)
 from .coordinator import PVSurplusCoordinator
 
 
@@ -29,6 +36,7 @@ async def async_setup_entry(
     for dev in entry.data.get(CONF_DEVICES, []):
         if not dev.get(CONF_DEVICE_IS_WALLBOX, False):
             entities.append(PVDevicePowerSensor(coordinator, entry, dev))
+            entities.append(PVDeviceOffTimerSensor(coordinator, entry, dev))
     async_add_entities(entities)
 
 
@@ -187,6 +195,55 @@ class PVDevicePowerSensor(_PVSensorBase):
             "laufzeit_heute_h": round(diag.runtime_hours_today, 2),
             "mindest_laufzeit_erzwungen": diag.force_runtime,
             "voraussetzung_erfullt": diag.dependency_met,
+        }
+
+    @property
+    def _diagnostics(self):
+        if not self.coordinator.data:
+            return None
+        return self.coordinator.data.device_diagnostics.get(self._device_id)
+
+
+class PVDeviceOffTimerSensor(_PVSensorBase):
+    """Seconds remaining before this device would actually be switched off,
+    once an off-decision has started holding. There's a buffer on purpose —
+    a device isn't cut the instant the battery projection turns negative;
+    it has to hold for a few minutes up to ~12 (scaling with how much
+    battery margin is left) before we act, so a brief dip doesn't cause an
+    unnecessary switch. 0 while the device isn't currently counting down
+    toward being turned off (stable on, stable off, or being force-managed
+    by a window/dependency, which acts immediately with no buffer)."""
+
+    _attr_native_unit_of_measurement = "s"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:timer-sand"
+
+    def __init__(self, coordinator: PVSurplusCoordinator, entry: ConfigEntry, device: dict) -> None:
+        super().__init__(coordinator, entry)
+        self._device_id = device["_id"]
+        name = device.get(CONF_DEVICE_NAME, self._device_id)
+        self._attr_name = f"{name} — Abschalt-Puffer"
+
+    @property
+    def unique_id(self):
+        return f"{self._entry.entry_id}_{self._device_id}_off_timer"
+
+    @property
+    def native_value(self):
+        diag = self._diagnostics
+        if diag is None or diag.off_counter <= 0:
+            return 0
+        remaining_cycles = max(diag.required_off_cycles - diag.off_counter, 0)
+        return remaining_cycles * UPDATE_INTERVAL_SECONDS
+
+    @property
+    def extra_state_attributes(self):
+        diag = self._diagnostics
+        if diag is None:
+            return {}
+        return {
+            "zyklen_gehalten": diag.off_counter,
+            "benoetigte_zyklen": diag.required_off_cycles,
         }
 
     @property

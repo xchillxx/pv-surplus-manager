@@ -78,6 +78,9 @@ class DeviceDiagnostics:
     is_on: bool = False
     off_only: bool = False
     dependency_met: bool = True
+    off_counter: int = 0
+    required_off_cycles: int = 0
+    on_counter: int = 0
     runtime_hours_today: float = 0.0
     force_runtime: bool = False
 
@@ -471,6 +474,8 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 projected_h_battery > (data.h_to_solar + BATT_OK_BUFFER_H)
                 and data.soc > data.min_soc
             )
+            required_off_cycles = self._required_off_cycles(data)
+            diag.required_off_cycles = required_off_cycles
 
             should_on = (
                 force_runtime
@@ -503,7 +508,6 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
             elif should_off and is_on:
                 tracker.off_counter += 1
                 tracker.on_counter = 0
-                required_off_cycles = self._required_off_cycles(data)
                 if tracker.off_counter >= required_off_cycles:
                     _LOGGER.info(
                         "PV Surplus: turning OFF %s (remaining_surplus=%.2f, need=%.2f, "
@@ -516,6 +520,9 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
             else:
                 tracker.on_counter = 0
                 tracker.off_counter = 0
+
+            diag.off_counter = tracker.off_counter
+            diag.on_counter = tracker.on_counter
 
         data.device_states = device_states
         data.device_diagnostics = device_diagnostics

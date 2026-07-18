@@ -130,6 +130,11 @@ starts drawing power, and a lower-priority device sheds before a
 higher-priority one when there isn't enough margin for both, rather than
 every device sharing one global "is the battery discharging right now" flag.
 
+Each device also gets an "— Abschalt-Puffer" ("off buffer") sensor showing,
+in seconds, how much longer an active off-decision needs to hold before it's
+acted on — 0 while the device isn't currently counting down toward being
+turned off.
+
 ## License
 
 MIT
