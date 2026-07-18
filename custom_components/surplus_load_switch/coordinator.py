@@ -32,7 +32,6 @@ from .const import (
     CONF_DEVICE_POWER_SENSOR,
     CONF_DEVICE_PRIORITY,
     CONF_DEVICE_SCHEDULE_ENTITY,
-    CONF_DEVICE_SWITCH,
     CONF_DEVICE_WINDOW_END,
     CONF_DEVICE_WINDOW_START,
     CONF_LOAD_SENSOR,
@@ -53,6 +52,7 @@ from .const import (
     SURPLUS_ON_THRESHOLD,
     UPDATE_INTERVAL_SECONDS,
 )
+from .device_control import async_turn_off, async_turn_on, control_entity_id, is_device_on
 from .power_tracker import DevicePowerTracker
 from .runtime_tracker import DailyRuntimeTracker
 
@@ -323,13 +323,14 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # Figure out which candidate devices are currently on, and how much
         # power they're drawing right now, so we can subtract that from the
         # house load and recover the "base load" our devices don't control.
+        # A device is either switch-controlled or climate-controlled (e.g. a
+        # pool heat pump with only a thermostat mode, no on/off switch) —
+        # device_control handles both uniformly.
         device_is_on: dict[str, bool] = {}
         managed_power_kw = 0.0
         for dev in candidate_devices:
             device_id = dev["_id"]
-            switch_id = dev.get(CONF_DEVICE_SWITCH)
-            sw_state = self.hass.states.get(switch_id) if switch_id else None
-            is_on = sw_state is not None and sw_state.state == "on"
+            is_on = is_device_on(self.hass, dev)
             device_is_on[device_id] = is_on
             if is_on:
                 sensor_id = dev.get(CONF_DEVICE_POWER_SENSOR)
@@ -362,7 +363,7 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
         for dev in candidate_devices:
             device_id = dev["_id"]
-            switch_id = dev.get(CONF_DEVICE_SWITCH)
+            control_id = control_entity_id(dev)
             is_on = device_is_on[device_id]
             device_states[device_id] = is_on
 
@@ -402,9 +403,10 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
             diag.force_runtime = force_runtime
             device_diagnostics[device_id] = diag
 
-            if not switch_id:
-                # No switch configured (shouldn't happen for non-wallbox
-                # devices — validated at config time), nothing to actuate.
+            if not control_id:
+                # No switch or climate entity configured (shouldn't happen
+                # for non-wallbox devices — validated at config time),
+                # nothing to actuate.
                 continue
 
             tracker = self._device_trackers.setdefault(
@@ -425,9 +427,7 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
                         "PV Surplus: turning OFF %s (outside its configured time window)",
                         dev.get(CONF_DEVICE_NAME),
                     )
-                    await self.hass.services.async_call(
-                        "switch", "turn_off", {"entity_id": switch_id}, blocking=False
-                    )
+                    await async_turn_off(self.hass, dev)
                 continue
 
             remaining_surplus = available_surplus - cumulative_committed
@@ -481,9 +481,7 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
                         dev.get(CONF_DEVICE_NAME), remaining_surplus, predicted_power,
                         battery_would_last, force_runtime,
                     )
-                    await self.hass.services.async_call(
-                        "switch", "turn_on", {"entity_id": switch_id}, blocking=False
-                    )
+                    await async_turn_on(self.hass, dev)
                     tracker.on_counter = 0
             elif should_off and is_on:
                 tracker.off_counter += 1
@@ -496,9 +494,7 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
                         dev.get(CONF_DEVICE_NAME), remaining_surplus, predicted_power,
                         battery_would_last, required_off_cycles,
                     )
-                    await self.hass.services.async_call(
-                        "switch", "turn_off", {"entity_id": switch_id}, blocking=False
-                    )
+                    await async_turn_off(self.hass, dev)
                     tracker.off_counter = 0
             else:
                 tracker.on_counter = 0

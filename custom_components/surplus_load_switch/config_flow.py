@@ -13,6 +13,9 @@ from .const import (
     CONF_BATTERY_CAPACITY_KWH,
     CONF_BATT_SENSOR,
     CONF_DEVICES,
+    CONF_DEVICE_CLIMATE_ENTITY,
+    CONF_DEVICE_CLIMATE_ON_MODE,
+    CONF_DEVICE_IS_CLIMATE,
     CONF_DEVICE_IS_WALLBOX,
     CONF_DEVICE_MIN_DAILY_RUNTIME_H,
     CONF_DEVICE_NAME,
@@ -29,6 +32,8 @@ from .const import (
     CONF_SOLAR_SENSOR,
     DOMAIN,
 )
+
+CLIMATE_HVAC_MODE_OPTIONS = ["heat", "cool", "auto", "heat_cool", "dry", "fan_only"]
 
 
 def _default(d: dict, key: str) -> dict:
@@ -69,14 +74,10 @@ def _global_settings_schema(defaults: dict | None = None) -> vol.Schema:
     })
 
 
-def _normal_device_schema(defaults: dict | None = None, next_priority: int = 1) -> vol.Schema:
-    """Schema for a switchable device — always has a switch entity."""
-    d = defaults or {}
-    return vol.Schema({
-        vol.Required(CONF_DEVICE_NAME, **_default(d, CONF_DEVICE_NAME)): str,
-        vol.Required(CONF_DEVICE_SWITCH, **_default(d, CONF_DEVICE_SWITCH)): selector.EntitySelector(
-            selector.EntitySelectorConfig(domain="switch")
-        ),
+def _common_device_fields(d: dict, next_priority: int) -> dict:
+    """Fields shared by every switchable device type (normal switch or
+    climate-controlled), regardless of how it's actually actuated."""
+    return {
         vol.Required(CONF_DEVICE_PRIORITY, default=d.get(CONF_DEVICE_PRIORITY, next_priority)): selector.NumberSelector(
             selector.NumberSelectorConfig(min=1, max=99, step=1)
         ),
@@ -96,7 +97,40 @@ def _normal_device_schema(defaults: dict | None = None, next_priority: int = 1) 
         ): selector.NumberSelector(
             selector.NumberSelectorConfig(min=0.5, max=24.0, step=0.5, unit_of_measurement="h")
         ),
-    })
+    }
+
+
+def _normal_device_schema(defaults: dict | None = None, next_priority: int = 1) -> vol.Schema:
+    """Schema for a switchable device controlled via a switch entity."""
+    d = defaults or {}
+    schema = {
+        vol.Required(CONF_DEVICE_NAME, **_default(d, CONF_DEVICE_NAME)): str,
+        vol.Required(CONF_DEVICE_SWITCH, **_default(d, CONF_DEVICE_SWITCH)): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="switch")
+        ),
+    }
+    schema.update(_common_device_fields(d, next_priority))
+    return vol.Schema(schema)
+
+
+def _climate_device_schema(defaults: dict | None = None, next_priority: int = 1) -> vol.Schema:
+    """Schema for a device with no on/off switch, only a climate entity
+    (e.g. a pool heat pump with just heat/cool/auto/off modes). "On" means
+    setting the configured hvac_mode; "off" means hvac_mode "off"."""
+    d = defaults or {}
+    schema = {
+        vol.Required(CONF_DEVICE_NAME, **_default(d, CONF_DEVICE_NAME)): str,
+        vol.Required(CONF_DEVICE_CLIMATE_ENTITY, **_default(d, CONF_DEVICE_CLIMATE_ENTITY)): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="climate")
+        ),
+        vol.Required(
+            CONF_DEVICE_CLIMATE_ON_MODE, default=d.get(CONF_DEVICE_CLIMATE_ON_MODE, "heat")
+        ): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=CLIMATE_HVAC_MODE_OPTIONS, mode=selector.SelectSelectorMode.DROPDOWN)
+        ),
+    }
+    schema.update(_common_device_fields(d, next_priority))
+    return vol.Schema(schema)
 
 
 def _wallbox_schema(defaults: dict | None = None) -> vol.Schema:
@@ -112,7 +146,11 @@ def _wallbox_schema(defaults: dict | None = None) -> vol.Schema:
 
 
 def _finalize_normal_device(user_input: dict) -> dict:
-    return {**user_input, CONF_DEVICE_IS_WALLBOX: False}
+    return {**user_input, CONF_DEVICE_IS_WALLBOX: False, CONF_DEVICE_IS_CLIMATE: False}
+
+
+def _finalize_climate_device(user_input: dict) -> dict:
+    return {**user_input, CONF_DEVICE_IS_WALLBOX: False, CONF_DEVICE_IS_CLIMATE: True}
 
 
 def _finalize_wallbox_device(user_input: dict) -> dict:
@@ -120,6 +158,7 @@ def _finalize_wallbox_device(user_input: dict) -> dict:
         CONF_DEVICE_NAME: user_input[CONF_DEVICE_NAME],
         CONF_DEVICE_POWER_SENSOR: user_input[CONF_DEVICE_POWER_SENSOR],
         CONF_DEVICE_IS_WALLBOX: True,
+        CONF_DEVICE_IS_CLIMATE: False,
         CONF_DEVICE_PRIORITY: 0,
     }
 
@@ -153,7 +192,7 @@ class PVSurplusConfigFlow(ConfigFlow, domain=DOMAIN):
         """First chance to add a device right after the base setup."""
         return self.async_show_menu(
             step_id="device_intro",
-            menu_options=["add_normal_device", "add_wallbox", "finish_setup"],
+            menu_options=["add_normal_device", "add_climate_device", "add_wallbox", "finish_setup"],
         )
 
     async def async_step_add_normal_device(self, user_input: dict | None = None):
@@ -164,6 +203,17 @@ class PVSurplusConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="add_normal_device",
             data_schema=_normal_device_schema(next_priority=_next_priority(self._devices)),
+            description_placeholders={"count": str(len(self._devices))},
+        )
+
+    async def async_step_add_climate_device(self, user_input: dict | None = None):
+        if user_input is not None:
+            self._devices.append({**_finalize_climate_device(user_input), "_id": str(uuid.uuid4())})
+            return await self.async_step_add_another()
+
+        return self.async_show_form(
+            step_id="add_climate_device",
+            data_schema=_climate_device_schema(next_priority=_next_priority(self._devices)),
             description_placeholders={"count": str(len(self._devices))},
         )
 
@@ -181,7 +231,7 @@ class PVSurplusConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_add_another(self, user_input: dict | None = None):
         return self.async_show_menu(
             step_id="add_another",
-            menu_options=["add_normal_device", "add_wallbox", "finish_setup"],
+            menu_options=["add_normal_device", "add_climate_device", "add_wallbox", "finish_setup"],
         )
 
     async def async_step_finish_setup(self, user_input: dict | None = None):
@@ -212,10 +262,12 @@ class PVSurplusOptionsFlow(OptionsFlow):
     def _device_label(d: dict) -> str:
         if d.get(CONF_DEVICE_IS_WALLBOX):
             return f"{d.get(CONF_DEVICE_NAME)} (Wallbox)"
+        if d.get(CONF_DEVICE_IS_CLIMATE):
+            return f"{d.get(CONF_DEVICE_NAME)} (Climate, Prio {d.get(CONF_DEVICE_PRIORITY)})"
         return f"{d.get(CONF_DEVICE_NAME)} (Prio {d.get(CONF_DEVICE_PRIORITY)})"
 
     async def async_step_init(self, user_input: dict | None = None):
-        menu_options = ["add_normal_device", "add_wallbox"]
+        menu_options = ["add_normal_device", "add_climate_device", "add_wallbox"]
         if self._devices:
             menu_options += ["edit_device", "remove_device"]
         menu_options += ["global_settings", "finish"]
@@ -241,6 +293,18 @@ class PVSurplusOptionsFlow(OptionsFlow):
         return self.async_show_form(
             step_id="add_normal_device",
             data_schema=_normal_device_schema(next_priority=_next_priority(self._devices)),
+            description_placeholders={"count": str(len(self._devices))},
+        )
+
+    async def async_step_add_climate_device(self, user_input: dict | None = None):
+        if user_input is not None:
+            self._devices.append({**_finalize_climate_device(user_input), "_id": str(uuid.uuid4())})
+            self._save_devices()
+            return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="add_climate_device",
+            data_schema=_climate_device_schema(next_priority=_next_priority(self._devices)),
             description_placeholders={"count": str(len(self._devices))},
         )
 
@@ -277,10 +341,16 @@ class PVSurplusOptionsFlow(OptionsFlow):
             return await self.async_step_init()
 
         is_wallbox = current.get(CONF_DEVICE_IS_WALLBOX, False)
+        is_climate = current.get(CONF_DEVICE_IS_CLIMATE, False)
 
         if user_input is not None:
             target_id = self._edit_target
-            finalized = _finalize_wallbox_device(user_input) if is_wallbox else _finalize_normal_device(user_input)
+            if is_wallbox:
+                finalized = _finalize_wallbox_device(user_input)
+            elif is_climate:
+                finalized = _finalize_climate_device(user_input)
+            else:
+                finalized = _finalize_normal_device(user_input)
             self._devices = [
                 {**finalized, "_id": target_id} if d.get("_id") == target_id else d
                 for d in self._devices
@@ -289,7 +359,12 @@ class PVSurplusOptionsFlow(OptionsFlow):
             self._save_devices()
             return await self.async_step_init()
 
-        schema = _wallbox_schema(defaults=current) if is_wallbox else _normal_device_schema(defaults=current)
+        if is_wallbox:
+            schema = _wallbox_schema(defaults=current)
+        elif is_climate:
+            schema = _climate_device_schema(defaults=current)
+        else:
+            schema = _normal_device_schema(defaults=current)
         return self.async_show_form(
             step_id="edit_device",
             data_schema=schema,

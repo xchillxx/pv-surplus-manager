@@ -55,6 +55,12 @@ cloud passes over or another appliance briefly kicks in.
   chance to reach that for free on surplus/battery power earlier in the day;
   only from the afternoon onward, if it's still short, does it get forced on
   (potentially on grid power) to catch up before the day is over.
+- **Climate-controlled devices** — some devices (e.g. a pool heat pump) have
+  no on/off switch at all, only a thermostat-style mode selector
+  (off/heat/cool/auto). Add these as a climate-controlled device: pick the
+  `climate.*` entity and which mode counts as "on" (e.g. `heat`) — the
+  cascade otherwise treats it exactly like a switch-controlled device
+  (priority, power measurement, time windows, minimum runtime all apply).
 - Fully configurable through the Home Assistant UI (no YAML required).
 
 ## Requirements
@@ -85,6 +91,7 @@ Copy `custom_components/surplus_load_switch` into your `config/custom_components
 2. Select your solar, load, SOC and battery power sensors, battery capacity, and minimum SOC
 3. Right after setup (or later via the integration's Configure menu), add devices:
    - **Switchable device** (e.g. a miner): name, switch entity, priority, estimated power, optional power sensor for automatic measurement
+   - **Climate-controlled device** (e.g. a pool heat pump with no on/off switch): name, climate entity, which hvac_mode counts as "on", same priority/power/window/runtime options as a switchable device
    - **Wallbox**: name and power sensor only — never switched, just subtracted from the load
 
 Priority determines serving order (1 = highest). Use "Edit device" to change

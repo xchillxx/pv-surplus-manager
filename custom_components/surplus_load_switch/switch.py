@@ -16,10 +16,12 @@ from .const import (
     CONF_DEVICE_IS_WALLBOX,
     CONF_DEVICE_NAME,
     CONF_DEVICE_PRIORITY,
-    CONF_DEVICE_SWITCH,
     DOMAIN,
 )
 from .coordinator import PVSurplusCoordinator
+from .device_control import control_entity_id, is_device_on
+from .device_control import async_turn_off as _control_turn_off
+from .device_control import async_turn_on as _control_turn_on
 
 
 async def async_setup_entry(
@@ -30,13 +32,14 @@ async def async_setup_entry(
     entities = [
         PVDeviceSwitch(coordinator, entry, dev)
         for dev in devices
-        if not dev.get(CONF_DEVICE_IS_WALLBOX, False) and dev.get(CONF_DEVICE_SWITCH)
+        if not dev.get(CONF_DEVICE_IS_WALLBOX, False) and control_entity_id(dev)
     ]
     async_add_entities(entities)
 
 
 class PVDeviceSwitch(CoordinatorEntity[PVSurplusCoordinator], SwitchEntity):
-    """Read-only mirror of the managed switch — shows PV manager's view of the device."""
+    """Read-only mirror of the managed switch or climate entity — shows PV
+    manager's view of the device, regardless of how it's actually actuated."""
 
     _attr_has_entity_name = True
 
@@ -49,8 +52,8 @@ class PVDeviceSwitch(CoordinatorEntity[PVSurplusCoordinator], SwitchEntity):
         super().__init__(coordinator)
         self._entry = entry
         self._device_id = device["_id"]
-        self._switch_id = device[CONF_DEVICE_SWITCH]
-        name = device.get(CONF_DEVICE_NAME, self._switch_id)
+        self._device = device
+        name = device.get(CONF_DEVICE_NAME, control_entity_id(device))
         prio = device.get(CONF_DEVICE_PRIORITY, 99)
         self._attr_name = f"{name} (Prio {prio})"
         self._attr_unique_id = f"{entry.entry_id}_{self._device_id}_managed"
@@ -67,15 +70,10 @@ class PVDeviceSwitch(CoordinatorEntity[PVSurplusCoordinator], SwitchEntity):
     def is_on(self) -> bool | None:
         if self.coordinator.data and self.coordinator.data.device_states:
             return self.coordinator.data.device_states.get(self._device_id)
-        sw = self.hass.states.get(self._switch_id)
-        return sw is not None and sw.state == "on"
+        return is_device_on(self.hass, self._device)
 
     async def async_turn_on(self, **kwargs) -> None:
-        await self.hass.services.async_call(
-            "switch", "turn_on", {"entity_id": self._switch_id}
-        )
+        await _control_turn_on(self.hass, self._device)
 
     async def async_turn_off(self, **kwargs) -> None:
-        await self.hass.services.async_call(
-            "switch", "turn_off", {"entity_id": self._switch_id}
-        )
+        await _control_turn_off(self.hass, self._device)
