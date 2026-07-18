@@ -135,6 +135,12 @@ in seconds, how much longer an active off-decision needs to hold before it's
 acted on — 0 while the device isn't currently counting down toward being
 turned off.
 
+If any of the four core sensors (solar, load, SOC, battery power) reports
+`unavailable`/`unknown`, the coordinator skips that update cycle entirely
+instead of treating the missing value as 0 — a brief sensor hiccup on the
+solar sensor would otherwise look exactly like "no sun" and could switch
+devices off. The last known data is kept until the sensor recovers.
+
 ## License
 
 MIT

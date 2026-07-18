@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -161,6 +161,22 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         except ValueError:
             return default
 
+    def _require_valid(self, entity_id: str) -> None:
+        """Raise if a core sensor isn't currently readable.
+
+        Without this, a sensor going "unknown" (e.g. a brief integration
+        hiccup) would silently read as 0 via _get_float's default — 0 solar
+        looks exactly like "no sun" to the cascade, and after the off-hold
+        buffer expires, devices would actually be switched off because of a
+        communication glitch, not a real drop in production. Raising
+        UpdateFailed here instead makes the coordinator keep its last good
+        data and skip evaluating devices entirely this cycle, so nothing
+        gets switched based on a sensor that isn't actually reporting.
+        """
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state in ("unavailable", "unknown", ""):
+            raise UpdateFailed(f"{entity_id} is unavailable/unknown — skipping this cycle")
+
     def _get_power_kw(self, entity_id: str | None) -> float:
         """Read a power sensor, normalising W to kW."""
         if not entity_id:
@@ -268,6 +284,9 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         return solar_start_today if solar_start_today > now else solar_start_next
 
     async def _async_update_data(self) -> CoordinatorData:
+        for sensor_key in (CONF_SOLAR_SENSOR, CONF_LOAD_SENSOR, CONF_SOC_SENSOR, CONF_BATT_SENSOR):
+            self._require_valid(self._config[sensor_key])
+
         solar = self._get_float(self._config[CONF_SOLAR_SENSOR])
         load = self._get_float(self._config[CONF_LOAD_SENSOR])
         soc = self._get_float(self._config[CONF_SOC_SENSOR])
