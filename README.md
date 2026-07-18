@@ -25,8 +25,18 @@ cloud passes over or another appliance briefly kicks in.
   static estimate once enough data exists.
 - **Battery-aware overnight logic** — devices stay on overnight if the
   battery has enough charge to last until solar production resumes the next
-  morning (based on sunrise + a configurable monthly offset, since raw
-  sunrise isn't when solar actually becomes useful).
+  morning (based on sunrise + a monthly offset, since raw sunrise isn't
+  when solar actually becomes useful).
+- **Self-calibrating solar-start offset** — that monthly offset isn't a
+  fixed guess: it's learned per calendar month from this system's own solar
+  production history (Home Assistant's long-term statistics), using only
+  good-quality days — a day only counts if its peak production reaches 70%
+  of the recent local peak, which filters out cloudy days using nothing but
+  the system's own data (no external weather source needed). A month
+  without enough good days yet borrows from a nearby calibrated month
+  (offset changes gradually across the year) or falls back to a sane
+  default, so coverage improves progressively over a year of real
+  operation instead of requiring a full year before it helps at all.
 - **Spike-resistant** — the battery-margin projection uses a 20-minute
   rolling median of the discharge rate, so a stove or kettle running for a
   few minutes doesn't get projected forward as if it continued all night.

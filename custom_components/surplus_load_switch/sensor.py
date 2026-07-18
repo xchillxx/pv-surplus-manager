@@ -29,6 +29,7 @@ async def async_setup_entry(
         PVHToSolarSensor(coordinator, entry),
         PVModeSensor(coordinator, entry),
         PVSocSensor(coordinator, entry),
+        PVSolarCalibrationSensor(coordinator, entry),
     ]
     # Wallbox devices aren't evaluated in the cascade, so there's no
     # predicted-power diagnostics for them — their own power_sensor already
@@ -156,6 +157,33 @@ class PVSocSensor(_PVSensorBase):
         if not self.coordinator.data:
             return None
         return round(self.coordinator.data.avail_kwh, 2)
+
+
+class PVSolarCalibrationSensor(_PVSensorBase):
+    """How many of the 12 calendar months currently have a learned
+    solar-start offset (vs. still falling back to the configured/default
+    estimate) — see attributes for the values and how many good days each
+    is based on."""
+
+    _attr_name = "Solar-Start Kalibrierung"
+    _attr_icon = "mdi:chart-bell-curve-cumulative"
+
+    @property
+    def unique_id(self):
+        return f"{self._entry.entry_id}_solar_calibration"
+
+    @property
+    def native_value(self):
+        if not self.coordinator.data:
+            return None
+        n = len(self.coordinator.data.calibration.get("kalibrierte_monate", []))
+        return f"{n}/12 Monate"
+
+    @property
+    def extra_state_attributes(self):
+        if not self.coordinator.data:
+            return {}
+        return self.coordinator.data.calibration
 
 
 class PVDevicePowerSensor(_PVSensorBase):

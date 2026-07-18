@@ -77,3 +77,35 @@ RUNTIME_STORE_SAVE_DELAY = 60
 # still gets first chance to reach the target for free before we consider
 # spending grid power on it.
 MIN_RUNTIME_FORCE_AFTER_HOUR = 12
+
+# --- Self-calibrating solar-start offset ---
+# Learns DEFAULT_SOLAR_OFFSETS from the system's own historical solar
+# production instead of relying on the guessed defaults above, per calendar
+# month, once enough good-quality (non-cloudy) days exist for that month.
+CALIBRATION_INTERVAL_HOURS = 24  # how often to re-derive offsets from statistics
+CALIBRATION_LOOKBACK_DAYS = 400  # a bit over a year, so multi-year data accumulates
+# A day only counts toward calibration if its peak production reaches this
+# fraction of the 90th-percentile peak in the surrounding window — filters
+# out cloudy/overcast days using only the system's own data, no external
+# weather source needed.
+CALIBRATION_CLOUD_WINDOW_DAYS = 10
+# 0.80 was too strict in practice: an inverter/feed-in power cap means a
+# day's visible peak depends partly on how much was being self-consumed at
+# that moment, not purely on weather — a handful of high-consumption days
+# pushing past the cap inflate the local reference and make equally clear,
+# merely-capped days look artificially worse by comparison. 0.70 keeps
+# excluding genuinely cloudy days while tolerating that cap-driven noise.
+CALIBRATION_CLOUD_GOOD_RATIO = 0.70
+# Within a good day, "solar start" is the first hour whose mean production
+# reaches this fraction of that day's own peak — relative to the day's own
+# peak (not a fixed kW value) so it works the same on any system size.
+CALIBRATION_THRESHOLD_RATIO = 0.15
+# Minimum good days required before a month's calibrated value is trusted
+# over the configured/default estimate.
+CALIBRATION_MIN_GOOD_DAYS = 5
+# A month without its own calibration may borrow from a calibrated
+# neighbour up to this many months away (circularly) — solar offset moves
+# gradually across the year, so a nearby measured month is a better guess
+# than the static default, but a gap wider than this isn't trusted since
+# the seasonal relationship isn't necessarily linear over that distance.
+CALIBRATION_MAX_INTERP_MONTHS = 2

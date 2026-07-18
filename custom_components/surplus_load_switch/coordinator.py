@@ -21,6 +21,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     BATT_OK_BUFFER_H,
+    CALIBRATION_INTERVAL_HOURS,
     CONF_BATT_SENSOR,
     CONF_BATTERY_CAPACITY_KWH,
     CONF_DEVICES,
@@ -56,6 +57,7 @@ from .const import (
 from .device_control import async_turn_off, async_turn_on, control_entity_id, is_device_on
 from .power_tracker import DevicePowerTracker
 from .runtime_tracker import DailyRuntimeTracker
+from .solar_calibration import SolarOffsetCalibrator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -104,6 +106,7 @@ class CoordinatorData:
     min_soc: float = 20.0
     device_states: dict[str, bool] = field(default_factory=dict)
     device_diagnostics: dict[str, DeviceDiagnostics] = field(default_factory=dict)
+    calibration: dict = field(default_factory=dict)
 
 
 class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
@@ -121,6 +124,7 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._power_trackers: dict[str, DevicePowerTracker] = {}
         self._runtime_trackers: dict[str, DailyRuntimeTracker] = {}
         self._discharge_samples: deque[float] = deque(maxlen=DISCHARGE_SMOOTHING_SAMPLES)
+        self._calibrator = SolarOffsetCalibrator(hass, entry_id, config[CONF_SOLAR_SENSOR])
         for dev in config.get(CONF_DEVICES, []):
             device_id = dev["_id"]
             self._device_trackers[device_id] = DeviceState(device_id=device_id)
@@ -129,7 +133,8 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         """Load persisted per-device state: power samples (only if a power
         sensor is configured) and today's accumulated runtime (always, so
         the minimum daily runtime feature has history even if it's enabled
-        later)."""
+        later). Also loads the last computed solar-offset calibration."""
+        await self._calibrator.async_load()
         for dev in self._config.get(CONF_DEVICES, []):
             if dev.get(CONF_DEVICE_IS_WALLBOX, False):
                 continue
@@ -259,7 +264,8 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
 
     def _get_solar_start(self) -> datetime:
         sun = self.hass.states.get("sun.sun")
-        offsets = self._config.get(CONF_SOLAR_OFFSETS, DEFAULT_SOLAR_OFFSETS)
+        configured_defaults = self._config.get(CONF_SOLAR_OFFSETS, DEFAULT_SOLAR_OFFSETS)
+        offsets = self._calibrator.offsets_for(configured_defaults)
         m = dt_util.now().month
         offset_h = offsets[m - 1]
 
@@ -284,6 +290,13 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         return solar_start_today if solar_start_today > now else solar_start_next
 
     async def _async_update_data(self) -> CoordinatorData:
+        # Re-derive the learned solar-start offsets once a day at most — this
+        # reads months of statistics and does real computation, far too
+        # expensive to repeat every 30s cycle. Independent of the live
+        # sensor checks below since it only reads historical statistics.
+        if self._calibrator.due_for_recalibration(timedelta(hours=CALIBRATION_INTERVAL_HOURS)):
+            await self._calibrator.async_recalibrate()
+
         for sensor_key in (CONF_SOLAR_SENSOR, CONF_LOAD_SENSOR, CONF_SOC_SENSOR, CONF_BATT_SENSOR):
             self._require_valid(self._config[sensor_key])
 
@@ -324,6 +337,7 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
             solar_start=solar_start,
             batt_ok=batt_ok,
             min_soc=min_soc,
+            calibration=self._calibrator.diagnostics,
         )
 
         await self._evaluate_devices(data)
