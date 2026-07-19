@@ -134,6 +134,10 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self._power_trackers: dict[str, DevicePowerTracker] = {}
         self._runtime_trackers: dict[str, DailyRuntimeTracker] = {}
         self._discharge_samples: deque[float] = deque(maxlen=DISCHARGE_SMOOTHING_SAMPLES)
+        # Which managed devices were on as of the last cycle — used to
+        # detect a composition change and reset the discharge smoothing
+        # window when one happens (see _evaluate_devices).
+        self._last_managed_on: frozenset[str] = frozenset()
         self._calibrator = SolarOffsetCalibrator(hass, entry_id, config[CONF_SOLAR_SENSOR])
         self._last_offset_h = 0.0
         for dev in config.get(CONF_DEVICES, []):
@@ -559,6 +563,19 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
                     self._get_power_kw(sensor_id) if sensor_id else dev.get(CONF_DEVICE_POWER_KW, 0.15)
                 )
 
+        # A managed device turning on/off changes the discharge rate
+        # immediately and predictably — it's not the kind of noise the
+        # smoothing median is meant to filter (that's for *external*
+        # spikes, like a kettle). Without this reset, base_discharge_kw
+        # below would keep mostly reflecting the pre-change composition
+        # for up to ~20 minutes (the full smoothing window), e.g. still
+        # looking like the battery is draining fast right after a
+        # windowed device's cutoff actually frees up that margin.
+        managed_on_now = frozenset(dev_id for dev_id, on in device_is_on.items() if on)
+        if managed_on_now != self._last_managed_on:
+            self._discharge_samples.clear()
+        self._last_managed_on = managed_on_now
+
         base_load = max(data.load_kw - wallbox_power_kw - managed_power_kw, 0.0)
         available_surplus = data.solar_kw - base_load
 
@@ -575,6 +592,15 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # "unavoidable" base discharge — what the battery would still be
         # losing even with every managed device off. This is the foundation
         # for a per-device, forward-looking battery projection below.
+        #
+        # The 20-minute median smoothing exists to tell a brief external
+        # spike (kettle, oven) apart from a real sustained change — but a
+        # managed device turning on/off *is* a real, immediate, known
+        # composition change, not noise to smooth over. If we didn't reset
+        # here, the median would keep mostly reflecting the discharge rate
+        # from before the change for up to ~20 minutes after e.g. a
+        # windowed device's cutoff, understating how much margin just
+        # opened up (see the "which_on changed" reset below).
         managed_discharge_kw = max(managed_power_kw - max(available_surplus, 0.0), 0.0)
         base_discharge_kw = max(data.smoothed_discharge_kw - managed_discharge_kw, 0.0)
 

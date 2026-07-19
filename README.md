@@ -54,7 +54,12 @@ cloud passes over or another appliance briefly kicks in.
   rolling median of the discharge rate, so a stove or kettle running for a
   few minutes doesn't get projected forward as if it continued all night.
   How long the system waits before switching a device off also scales with
-  how much battery margin is currently available.
+  how much battery margin is currently available. That smoothing window
+  resets immediately whenever a managed device itself turns on or off —
+  that's a real, known change in what's drawing power, not the kind of
+  external noise the median is meant to filter, so it shouldn't take up to
+  20 minutes to be reflected (e.g. a device's time window ending should
+  free up its share of the battery margin right away, not gradually).
 - **Wallbox support** — wallboxes with their own PV-surplus charging logic
   are added as a separate device type: never switched, only their power is
   subtracted from the household load so they don't distort the surplus
