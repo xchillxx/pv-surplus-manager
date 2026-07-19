@@ -290,8 +290,17 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         if schedule_entity:
             state = self.hass.states.get(schedule_entity)
             if state is not None and state.state == "on":
-                next_event_str = state.attributes.get("next_event")
-                next_event = dt_util.parse_datetime(next_event_str) if next_event_str else None
+                # The schedule integration stores next_event as a native
+                # datetime object on the in-memory State (unlike the REST/
+                # websocket APIs, which JSON-serialize it to a string) —
+                # accept either rather than assuming one.
+                next_event_raw = state.attributes.get("next_event")
+                if isinstance(next_event_raw, datetime):
+                    next_event = next_event_raw
+                elif isinstance(next_event_raw, str):
+                    next_event = dt_util.parse_datetime(next_event_raw)
+                else:
+                    next_event = None
                 if next_event is not None:
                     candidates.append(dt_util.as_utc(next_event))
         else:
@@ -374,11 +383,20 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         if sun is None:
             return dt_util.utcnow() + timedelta(hours=12)
 
-        next_rising_str = sun.attributes.get("next_rising")
-        if not next_rising_str:
+        next_rising_raw = sun.attributes.get("next_rising")
+        if not next_rising_raw:
             return dt_util.utcnow() + timedelta(hours=12)
 
-        next_rising = dt_util.parse_datetime(next_rising_str)
+        # Accept either a native datetime (how some HA-internal attributes
+        # are represented in memory) or an ISO string (how the REST/
+        # websocket APIs serialize the same attribute) — see the identical
+        # gotcha with schedule.*'s next_event in _effective_cutoff above.
+        if isinstance(next_rising_raw, datetime):
+            next_rising = next_rising_raw
+        elif isinstance(next_rising_raw, str):
+            next_rising = dt_util.parse_datetime(next_rising_raw)
+        else:
+            next_rising = None
         if next_rising is None:
             return dt_util.utcnow() + timedelta(hours=12)
 
