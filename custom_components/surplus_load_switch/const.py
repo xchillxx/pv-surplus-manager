@@ -49,6 +49,17 @@ STABLE_OFF_CYCLES_MAX = 24  # 24 × 30s = 12 min — used when margin is comfort
 STAGGER_CYCLES_PER_PRIORITY_STEP = 2  # 2 × 30s = 1 min less patience per rank
 OFF_CYCLES_FLOOR = 2  # 2 × 30s = 1 min minimum, however low the priority
 
+# How long to keep using the pre-transition managed-power figure for
+# base_load after a managed device's on/off state changes — covers
+# cloud-polled sensors (e.g. FusionSolarPlus, observed ~5 min lag) whose
+# load reading doesn't reflect the change immediately. A fixed timer
+# rather than watching for the sensor to visibly catch up, since even a
+# freshly-timestamped reading from this sensor can still carry a stale
+# value (its own polling cadence, not just whether HA has seen a new
+# state) — kept close to the observed lag so the correction doesn't
+# overstay once the sensor has genuinely caught up.
+LOAD_SENSOR_STALENESS_GRACE = timedelta(minutes=6)
+
 # "Margin" = h_battery - h_to_solar, i.e. how many hours of battery buffer
 # exist beyond what's strictly needed until solar resumes. When margin is
 # large, a short deficit is more likely a transient spike (oven, kettle) than

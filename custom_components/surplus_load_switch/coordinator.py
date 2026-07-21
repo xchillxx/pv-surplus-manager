@@ -44,6 +44,7 @@ from .const import (
     DEFAULT_SOLAR_OFFSETS,
     DISCHARGE_SMOOTHING_SAMPLES,
     DOMAIN,
+    LOAD_SENSOR_STALENESS_GRACE,
     MARGIN_FOR_MAX_PATIENCE_H,
     MIN_RUNTIME_FORCE_AFTER_HOUR,
     MIN_SAMPLES_FOR_MEASURED_AVG,
@@ -138,6 +139,13 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # detect a composition change and reset the discharge smoothing
         # window when one happens (see _evaluate_devices).
         self._last_managed_on: frozenset[str] = frozenset()
+        # Tracks the managed-device mix a still-unrefreshed load-sensor
+        # reading was last known to actually reflect, and the on/off
+        # composition as of the previous cycle — see the staleness
+        # correction in _evaluate_devices.
+        self._last_managed_power_kw: float = 0.0
+        self._stale_managed_power_kw: float | None = None
+        self._stale_since: datetime | None = None
         self._calibrator = SolarOffsetCalibrator(hass, entry_id, config[CONF_SOLAR_SENSOR])
         self._last_offset_h = 0.0
         for dev in config.get(CONF_DEVICES, []):
@@ -583,7 +591,51 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
             self._discharge_samples.clear()
         self._last_managed_on = managed_on_now
 
-        base_load = max(data.load_kw - wallbox_power_kw - managed_power_kw, 0.0)
+        # Our own switch/climate states react within seconds of a
+        # transition (window/schedule cutoff, dependency, surplus
+        # decision), but the house-load sensor can be a cloud-polled
+        # integration that only refreshes every few minutes (observed:
+        # ~5 min lag on FusionSolarPlus, and its own refreshes during that
+        # lag can still carry a stale-looking value — a fresh last_changed
+        # timestamp doesn't reliably mean the value itself has caught up,
+        # so that can't be used as the "has it recovered" signal). Right
+        # after a managed device turns off, load_kw can keep reporting the
+        # pre-transition total for several cycles — since managed_power_kw
+        # already reflects the device being off, subtracting it from that
+        # stale (still-higher) total misattributes the device's own
+        # lingering reading to "base load", spiking it and tanking
+        # available_surplus until the sensor genuinely catches up. This
+        # happens every evening a windowed device (e.g. the pool pump)
+        # hits its cutoff, not just occasionally.
+        #
+        # Keep using the managed-power figure from just before a
+        # composition change for a fixed grace period, instead of the
+        # current one, since that's what the still-displayed (possibly
+        # stale) total actually corresponds to.
+        now = dt_util.utcnow()
+
+        if managed_power_kw != self._last_managed_power_kw and self._stale_managed_power_kw is None:
+            # Only capture a fresh freeze point if we're not already mid
+            # grace-period — a second device changing before the sensor
+            # has caught up with the first (e.g. the pool pump and its
+            # dependent heat pump both hitting their cutoff within the
+            # same minute) must not overwrite the original pre-cluster
+            # value with an intermediate one the sensor never actually
+            # reflected either.
+            self._stale_managed_power_kw = self._last_managed_power_kw
+            self._stale_since = now
+
+        effective_managed_power_kw = managed_power_kw
+        if self._stale_managed_power_kw is not None:
+            if now - self._stale_since < LOAD_SENSOR_STALENESS_GRACE:
+                effective_managed_power_kw = self._stale_managed_power_kw
+            else:
+                self._stale_managed_power_kw = None
+                self._stale_since = None
+
+        self._last_managed_power_kw = managed_power_kw
+
+        base_load = max(data.load_kw - wallbox_power_kw - effective_managed_power_kw, 0.0)
         available_surplus = data.solar_kw - base_load
 
         data.base_load_kw = base_load
