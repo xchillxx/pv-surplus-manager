@@ -660,7 +660,24 @@ class PVSurplusCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # from before the change for up to ~20 minutes after e.g. a
         # windowed device's cutoff, understating how much margin just
         # opened up (see the "which_on changed" reset below).
-        managed_discharge_kw = max(managed_power_kw - max(available_surplus, 0.0), 0.0)
+        #
+        # This must use effective_managed_power_kw, the same
+        # staleness-corrected figure base_load uses above, not the fresh
+        # managed_power_kw — confirmed directly against real data that the
+        # battery charge/discharge sensor lags on the same ~5-minute cloud
+        # polling cadence as the load sensor (both come from the same
+        # FusionSolarPlus source). Right after a composition change, the
+        # deque above was just cleared and gets refilled starting from
+        # data.discharge_kw, itself a still-stale (pre-transition) reading
+        # for the same several minutes. Subtracting the fresh (post-
+        # transition, lower) managed_power_kw from that stale reading
+        # would then attribute most of it to "unavoidable" base discharge
+        # instead of to the devices that, as far as this still-lagging
+        # sensor is concerned, are still running — inflating
+        # base_discharge_kw and making the battery projection needlessly
+        # pessimistic for every device right when a windowed device's
+        # cutoff should be making things easier, not harder.
+        managed_discharge_kw = max(effective_managed_power_kw - max(available_surplus, 0.0), 0.0)
         base_discharge_kw = max(data.smoothed_discharge_kw - managed_discharge_kw, 0.0)
 
         device_states: dict[str, bool] = {}

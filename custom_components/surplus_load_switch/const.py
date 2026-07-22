@@ -50,14 +50,17 @@ STAGGER_CYCLES_PER_PRIORITY_STEP = 2  # 2 × 30s = 1 min less patience per rank
 OFF_CYCLES_FLOOR = 2  # 2 × 30s = 1 min minimum, however low the priority
 
 # How long to keep using the pre-transition managed-power figure for
-# base_load after a managed device's on/off state changes — covers
-# cloud-polled sensors (e.g. FusionSolarPlus, observed ~5 min lag) whose
-# load reading doesn't reflect the change immediately. A fixed timer
-# rather than watching for the sensor to visibly catch up, since even a
-# freshly-timestamped reading from this sensor can still carry a stale
-# value (its own polling cadence, not just whether HA has seen a new
-# state) — kept close to the observed lag so the correction doesn't
-# overstay once the sensor has genuinely caught up.
+# base_load AND battery-discharge attribution after a managed device's
+# on/off state changes — covers cloud-polled sensors (e.g. FusionSolarPlus,
+# observed ~5 min lag) whose readings don't reflect the change
+# immediately. Confirmed this applies to both the house-load sensor and
+# the battery charge/discharge sensor (same cloud source, same lag), so
+# this single grace period gates both corrections consistently. A fixed
+# timer rather than watching for a sensor to visibly catch up, since even
+# a freshly-timestamped reading from these sensors can still carry a
+# stale value (their own polling cadence, not just whether HA has seen a
+# new state) — kept close to the observed lag so the correction doesn't
+# overstay once the sensors have genuinely caught up.
 LOAD_SENSOR_STALENESS_GRACE = timedelta(minutes=6)
 
 # "Margin" = h_battery - h_to_solar, i.e. how many hours of battery buffer
